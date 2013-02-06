@@ -197,11 +197,16 @@
             (path:end-trace-set! cond-path merge-trace)
             (path:parent-set!    then-path cond-path)
             (path:parent-set!    else-path cond-path)
-            (path:regs-size-set! cond-path
-                                 (max (path:regs-size cond-path)
-                                      (path:regs-size then-path)
-                                      (path:regs-size else-path)))
-            
+            (and (> (path:regs-size then-path)
+                    (path:regs-size cond-path))
+                 (path:regs-size-set!
+                  cond-path
+                  (path:regs-size then-path)))
+            (and (> (path:regs-size else-path)
+                    (path:regs-size cond-path))
+                 (path:regs-size-set!
+                  cond-path
+                  (path:regs-size else-path)))
             cond-path
             ))
         (context:report-error
@@ -738,7 +743,7 @@
       (set! loop (lambda (x)
                    (if (< x 1000000)
                        (loop (+ x 1))
-                       (print 1))))
+                       (print x))))
       (loop 0)) 0)
   )
 
