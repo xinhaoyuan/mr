@@ -106,7 +106,7 @@
               (compiler:compile-keyword context
                                         (expression:get-symbol head-expression)
                                         (cdr exp-list)))
-             
+
              ;; apply
              (else
               (compiler:compile-keyword context
