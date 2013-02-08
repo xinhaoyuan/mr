@@ -1,8 +1,9 @@
 (context return-continuation scope-level-list trace-list trace-count)
 (variable-binding level offset)
-(trace scan-flag scan-id path context instruction-list)
+(trace scan-flag scan-id lambda-info path context instruction-rlist constant-rlist constant-count)
 (path start-trace end-trace regs-size offset-abs offset-rel parent)
-(entry entry-trace-id regs-size)
+(entry entry-trace regs-size)
+(lambda-info argc regs-size)
 
 (instruction-constant constant dst-reg-id)
 (instruction-if then-branch else-branch cond-reg-id)
@@ -14,4 +15,4 @@
 (instruction-apply-tail)
 (instruction-load level offset dst-reg-id)
 (instruction-store level offset src-reg-id)
-(instruction-lambda args-count entry-id regs-size dst-reg-id)
+(instruction-lambda entry-id dst-reg-id)

@@ -45,7 +45,8 @@
                (trace:instruction-append!
                 trace
                 (instruction-constant:@
-                 (expression:get-symbol expression)
+                 (trace:create-constant!
+                  trace (expression:get-symbol expression))
                  0))
 
                (trace:path-set!       trace path)
@@ -64,7 +65,8 @@
          (trace:instruction-append!
           trace
           (instruction-constant:@
-           (expression:get-number expression)
+           (trace:create-constant!
+            trace (expression:get-number expression))
            0))
 
          (trace:path-set!       trace path)
@@ -82,7 +84,8 @@
          (trace:instruction-append!
           trace
           (instruction-constant:@
-           (expression:get-string expression)
+           (trace:create-constant!
+            trace (expression:get-string expression))
            0))
          
          (trace:path-set!       trace path)
@@ -340,12 +343,14 @@
                               (compiler:compile-keyword
                                context keyword:begin body-list)))
                        (context:pop-scope-level! context)
+                       (trace:lambda-info-set!
+                        (entry:entry-trace entry)
+                        (lambda-info:@ (length args-list)
+                                       (entry:regs-size entry)))
                        (trace:instruction-append!
                         trace
                         (instruction-lambda:@
-                         (length args-list)
-                         (entry:entry-trace-id entry)
-                         (entry:regs-size entry)
+                         (trace:scan-id (entry:entry-trace entry))
                          0))
 
                        (trace:path-set!       trace path)
@@ -426,7 +431,7 @@
   ((context:return-continuation context) '())
   )
 (define (context:create-trace context)
-  (trace:@ #f '() '() context '())
+  (trace:@ #f '() '() '() context '() '() 0)
   )
 (define (context:try-get-variable-binding context name)
   (letrec ((find-level
@@ -481,7 +486,7 @@
        (scan-trace
         (lambda (trace)
           (or (trace:scan-flag trace)
-              (let ((last-instruction (car (trace:instruction-list trace)))
+              (let ((last-instruction (car (trace:instruction-rlist trace)))
                     (assign-scan-id
                      (lambda ()
                        (trace:scan-id-set! trace trace-count)
@@ -513,16 +518,16 @@
                         )
                     (scan-trace target-trace)
                     (if (eq? (trace:scan-id target-trace) '())
-                        (if (eq? (cdr (trace:instruction-list trace)) '())
+                        (if (eq? (cdr (trace:instruction-rlist trace)) '())
                             (set-stub)
                             (let ((last-eff-instruction
-                                   (car (cdr (trace:instruction-list trace)))))
+                                   (car (cdr (trace:instruction-rlist trace)))))
                               (assign-scan-id)
                               (and (instruction-apply:? last-eff-instruction)
                                    (begin
-                                     (trace:instruction-list-set!
+                                     (trace:instruction-rlist-set!
                                       trace
-                                      (cdr (cdr (trace:instruction-list trace))))
+                                      (cdr (cdr (trace:instruction-rlist trace))))
                                      (trace:instruction-append!
                                       trace
                                       (instruction-apply-tail:@))))))
@@ -533,22 +538,21 @@
                      (trace:scan-id target-trace))
                     ))
                  ((instruction-return:? last-instruction)
-                  (if (eq? (cdr (trace:instruction-list trace)) '())
+                  (if (eq? (cdr (trace:instruction-rlist trace)) '())
                       (set-stub)
                       (let ((last-eff-instruction
-                             (car (cdr (trace:instruction-list trace)))))
+                             (car (cdr (trace:instruction-rlist trace)))))
                         (assign-scan-id)
                         (and (instruction-apply:? last-eff-instruction)
                              (begin
-                               (trace:instruction-list-set!
+                               (trace:instruction-rlist-set!
                                 trace
-                                (cdr (cdr (trace:instruction-list trace))))
+                                (cdr (cdr (trace:instruction-rlist trace))))
                                (trace:instruction-append!
                                 trace
                                 (instruction-apply-tail:@)))))
                       ))
                  (else
-                  (debug last-instruction)
                   (context:report-error
                    context
                    "Unknow last instruction in a trace"))
@@ -558,7 +562,7 @@
     (scan-trace (path:start-trace path))
     (context:trace-list-set! context trace-list)
     (context:trace-count-set! context trace-count)
-    (entry:@ (trace:scan-id (path:start-trace path))
+    (entry:@ (path:start-trace path)
              (path:regs-size path))
     ))
 
@@ -567,15 +571,25 @@
            (fill
             (lambda (current count)
               (and (pair? current)
-                   (begin
+                   (let ((trace (car current)))
                      (vector-set!
                       trace-vector count
-                      (list->vector (trace:dump-instruction-list (car current))))
+                      (vector
+                       (let ((li (trace:lambda-info trace)))
+                         (if (lambda-info:? li)
+                             (vector (lambda-info:argc li)
+                                     (lambda-info:regs-size li))
+                             '()))
+                       (list->vector (trace:dump-instruction-list trace))
+                       (list->vector (reverse (trace:constant-rlist trace)))
+                       ))
                      (fill (cdr current) (- count 1))))))
            )
     (fill (context:trace-list context) (- (context:trace-count context) 1))
-    (cons trace-vector (vector (entry:entry-trace-id entry)
-                               (entry:regs-size entry)))
+    (cons
+     trace-vector
+     (vector (trace:scan-id (entry:entry-trace entry))
+             (entry:regs-size entry)))
     ))
 
 ;; == INSTRUCTION =============================================
@@ -586,16 +600,27 @@
 (define instruction-head:apply-prepare  'apply-prepare)
 (define instruction-head:apply-push-arg 'apply-push-arg)
 (define instruction-head:apply          'apply)
-(define instruction-head:apply-head     'apply-head)
+(define instruction-head:apply-tail     'apply-tail)
 (define instruction-head:load           'load)
 (define instruction-head:store          'store)
 (define instruction-head:lambda         'lambda)
 
 ;; == TRACE ===================================================
 (define (trace:instruction-append! trace instruction)
-  (trace:instruction-list-set!
+  (trace:instruction-rlist-set!
    trace
-   (cons instruction (trace:instruction-list trace))))
+   (cons instruction (trace:instruction-rlist trace))))
+(define (trace:create-constant! trace constant)
+  (trace:constant-rlist-set!
+   trace
+   (cons constant
+         (trace:constant-rlist trace)))
+  (let ((old (trace:constant-count trace)))
+    (trace:constant-count-set!
+     trace (+ old 1))
+    old
+    )
+  )
 (define (trace:dump-instruction-list trace)
   (letrec
       ((scan
@@ -670,9 +695,7 @@
                     )
                    ((instruction-lambda:? origin)
                     (vector instruction-head:lambda
-                            (instruction-lambda:args-count origin)
                             (instruction-lambda:entry-id origin)
-                            (instruction-lambda:regs-size origin)
                             (+ (path:offset-abs (trace:path trace))
                                (instruction-lambda:dst-reg-id origin))
                             )
@@ -681,7 +704,7 @@
                 result))
               result)))
        )
-    (scan (trace:instruction-list trace) '())))
+    (scan (trace:instruction-rlist trace) '())))
 
 (define (path:create-empty)
   (path:@ '() ;; start-trace

@@ -35,7 +35,10 @@
                  (cons 'vector (cons (list 'quote name) member-list))))
     (newline)
     (write (list 'define (list (string->symbol (string-append (symbol->string name) ":?")) 'self)
-                 (list 'eq? (list 'vector-ref 'self 0) (list 'quote name))))
+                 (list 'and
+                       (list 'vector? 'self)
+                       (list '= (list 'vector-length 'self) (+ (length member-list) 1))
+                       (list 'eq? (list 'vector-ref 'self 0) (list 'quote name)))))
     (newline)
     ))
 
