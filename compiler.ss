@@ -184,17 +184,17 @@
 
             (trace:instruction-append!
              (path:end-trace cond-path)
-             (instruction-if:@ (path:start-trace then-path)
+             (instruction-branch:@ (path:start-trace then-path)
                                (path:start-trace else-path)
                                0))
 
             (trace:instruction-append!
              (path:end-trace then-path)
-             (instruction-goto:@ merge-trace))
+             (instruction-jump:@ merge-trace))
 
             (trace:instruction-append!
              (path:end-trace else-path)
-             (instruction-goto:@ merge-trace))
+             (instruction-jump:@ merge-trace))
 
             (trace:path-set!     merge-trace cond-path)
             (path:end-trace-set! cond-path merge-trace)
@@ -249,7 +249,7 @@
                                    (path:regs-size-set! path cur-size)))
                             (trace:instruction-append!
                              (path:end-trace current-path)
-                             (instruction-goto:@
+                             (instruction-jump:@
                               (if (pair? (cdr index-list))
                                   (path:start-trace
                                    (vector-ref arg-path-vector
@@ -314,7 +314,7 @@
                                  (path:regs-size current-path)))
                            (trace:instruction-append!
                             (path:end-trace path)
-                            (instruction-goto:@ (path:start-trace current-path)))
+                            (instruction-jump:@ (path:start-trace current-path)))
                            (path:end-trace-set! path (path:end-trace current-path))
                            (eval (cdr current)))
                         ))))
@@ -499,22 +499,22 @@
                 (trace:scan-flag-set! trace #t)
                 (scan-path (trace:path trace))
                 (cond
-                 ((instruction-if:? last-instruction)
-                  (let ((then-trace (instruction-if:then-branch last-instruction))
-                        (else-trace (instruction-if:else-branch last-instruction))
+                 ((instruction-branch:? last-instruction)
+                  (let ((then-trace (instruction-branch:then-branch last-instruction))
+                        (else-trace (instruction-branch:else-branch last-instruction))
                         )
                     (scan-trace then-trace)
                     (scan-trace else-trace)
                     (assign-scan-id)
-                    (instruction-if:then-branch-set!
+                    (instruction-branch:then-branch-set!
                      last-instruction
                      (trace:scan-id then-trace))
-                    (instruction-if:else-branch-set!
+                    (instruction-branch:else-branch-set!
                      last-instruction
                      (trace:scan-id else-trace))
                     ))
-                 ((instruction-goto:? last-instruction)
-                  (let ((target-trace (instruction-goto:target last-instruction))
+                 ((instruction-jump:? last-instruction)
+                  (let ((target-trace (instruction-jump:target last-instruction))
                         )
                     (scan-trace target-trace)
                     (if (eq? (trace:scan-id target-trace) '())
@@ -533,7 +533,7 @@
                                       (instruction-apply-tail:@))))))
                         (assign-scan-id)
                         )
-                    (instruction-goto:target-set!
+                    (instruction-jump:target-set!
                      last-instruction
                      (trace:scan-id target-trace))
                     ))
@@ -585,17 +585,21 @@
                        ))
                      (fill (cdr current) (- count 1))))))
            )
+    (trace:lambda-info-set!
+     (entry:entry-trace entry)
+     (lambda-info:@
+      0
+      (entry:regs-size entry)))
     (fill (context:trace-list context) (- (context:trace-count context) 1))
     (cons
      trace-vector
-     (vector (trace:scan-id (entry:entry-trace entry))
-             (entry:regs-size entry)))
+     (trace:scan-id (entry:entry-trace entry)))
     ))
 
 ;; == INSTRUCTION =============================================
 (define instruction-head:constant       'constant)
-(define instruction-head:if             'if)
-(define instruction-head:goto           'goto)
+(define instruction-head:branch         'branch)
+(define instruction-head:jump           'jump)
 (define instruction-head:return         'return)
 (define instruction-head:apply-prepare  'apply-prepare)
 (define instruction-head:apply-push-arg 'apply-push-arg)
@@ -638,17 +642,17 @@
                                (instruction-constant:dst-reg-id origin))
                             )
                     )
-                   ((instruction-if:? origin)
-                    (vector instruction-head:if 
-                            (instruction-if:then-branch origin)
-                            (instruction-if:else-branch origin)
+                   ((instruction-branch:? origin)
+                    (vector instruction-head:branch 
+                            (instruction-branch:then-branch origin)
+                            (instruction-branch:else-branch origin)
                             (+ (path:offset-abs (trace:path trace))
-                               (instruction-if:cond-reg-id origin))
+                               (instruction-branch:cond-reg-id origin))
                             )
                     )
-                   ((instruction-goto:? origin)
-                    (vector instruction-head:goto
-                            (instruction-goto:target origin))
+                   ((instruction-jump:? origin)
+                    (vector instruction-head:jump
+                            (instruction-jump:target origin))
                     )
                    ((instruction-return:? origin)
                     (vector instruction-head:return
@@ -772,5 +776,7 @@
 
 (define (shell:unit-test)
   (let ((prog (shell:compile-raw-sexp shell:unit-case-7)))
-    (vm:execute-prog prog))
+    (vm:execute-prog prog)
+    ;; (pretty-print prog)
+    )
   )
