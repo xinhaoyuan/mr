@@ -51,6 +51,10 @@
 (define vm-instruction-code:apply-tail     9)
 (define vm-instruction-code:return         10)
 
+(define vm-constant-head:int               1)
+(define vm-constant-head:string-symbol     2)
+(define vm-cosntant-head:string            3)
+
 ;; == ENVIRONMENT =============================================
 (define (vm-env:binding env level offset)
   (if (> level 0)
@@ -245,7 +249,6 @@
 
 ;; == IO ======================================================
 (define (vm-io:write-binary prog)
-  (pretty-print prog)
   (letrec
       ((rlist '())
        (write
@@ -356,11 +359,10 @@
                            (lambda (index)
                              (and (< index (vm-trace:constant-size trace))
                                   (let ((const (vm-trace:constant trace index)))
-                                    ;; XXX
+                                    (write (format "~v" const))
                                     (write-constant (+ index 1))
                                     )))))
                        (write-constant 0))
-
                      (write-trace (+ index 1))
                      )))))
         (write-trace 0)

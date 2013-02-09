@@ -733,6 +733,38 @@
          (compiler:compile-expression context expression)))
        )
      )))
+(define (shell:binary-compiler input-file output-file)
+  (let ((input (open-input-file input-file))
+        (output (open-output-file output-file #:exists 'truncate)))
+    (letrec
+        ((data
+           (vm-io:write-binary (shell:compile-raw-sexp (read input))))
+          (write-data
+           (lambda (i)
+             (cond
+              ((number? i)
+               (write-byte (remainder i 256) output) (set! i (quotient i 256))
+               (write-byte (remainder i 256) output) (set! i (quotient i 256))
+               (write-byte (remainder i 256) output) (set! i (quotient i 256))
+               (write-byte (remainder i 256) output))
+              ((string? i)
+               (let ((b (string->bytes/utf-8 i)))
+                 (write-data (bytes-length b))
+                 (write-bytes b output)
+                 )
+               )
+              )))
+          (write
+           (lambda (index)
+             (and (< index (vector-length data))
+                  (begin
+                    (write-data (vector-ref data index))
+                    (write (+ index 1)))
+                  ))))
+      (print data) (newline)
+      (write 0)
+      )
+    ))
 (define (shell:repl)
   (let ((prog '()))
     (display "repl> ")
@@ -776,7 +808,6 @@
 
 (define (shell:unit-test)
   (let ((prog (shell:compile-raw-sexp shell:unit-case-7)))
+    (pretty-print prog)
     (vm:execute-prog prog)
-    ;; (pretty-print prog)
-    )
-  )
+    ))
