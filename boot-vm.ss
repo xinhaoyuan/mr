@@ -253,7 +253,6 @@
       ((rlist '())
        (write
         (lambda (i)
-          ;; (display "write ") (display i) (newline)
           (set! rlist (cons i rlist)))))
     (let ((traces (car prog)))
       (write (vector-length traces))
@@ -359,7 +358,7 @@
                            (lambda (index)
                              (and (< index (vm-trace:constant-size trace))
                                   (let ((const (vm-trace:constant trace index)))
-                                    (write (format "~v" const))
+                                    (write (format "~s" const))
                                     (write-constant (+ index 1))
                                     )))))
                        (write-constant 0))

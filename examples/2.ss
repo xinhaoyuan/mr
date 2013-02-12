@@ -1,0 +1,7 @@
+((lambda (loop)
+   (set! loop (lambda (x)
+                (if (< x 10000000)
+                    (loop (+ x 1))
+                    (print x))))
+   (loop 0))
+ 0)
