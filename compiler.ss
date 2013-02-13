@@ -45,8 +45,7 @@
                (trace:instruction-append!
                 trace
                 (instruction-constant:@
-                 (trace:create-constant!
-                  trace (expression:get-symbol expression))
+                 (expression:get-symbol expression)
                  0))
 
                (trace:path-set!       trace path)
@@ -65,8 +64,7 @@
          (trace:instruction-append!
           trace
           (instruction-constant:@
-           (trace:create-constant!
-            trace (expression:get-number expression))
+           (expression:get-number expression)
            0))
 
          (trace:path-set!       trace path)
@@ -84,8 +82,7 @@
          (trace:instruction-append!
           trace
           (instruction-constant:@
-           (trace:create-constant!
-            trace (expression:get-string expression))
+           (expression:get-string expression)
            0))
          
          (trace:path-set!       trace path)
@@ -431,7 +428,7 @@
   ((context:return-continuation context) '())
   )
 (define (context:create-trace context)
-  (trace:@ #f '() '() '() context '() '() 0)
+  (trace:@ 0 #f '() '() '() context '() '() 0)
   )
 (define (context:try-get-variable-binding context name)
   (letrec ((find-level
@@ -469,6 +466,7 @@
   (letrec
       ((trace-list (context:trace-list context))
        (trace-count (context:trace-count context))
+       
        (scan-path
         (lambda (path)
           (and (eq? (path:offset-abs path) '())
@@ -483,7 +481,157 @@
                       (+ (path:offset-abs (path:parent path))
                          (path:offset-rel path))))))
           ))
-       (scan-trace
+       (rewind-trace-scan
+        (lambda ()
+          (letrec ((rewind
+                    (lambda (current)
+                      (or (eq? current (context:trace-list context))
+                          (let ((trace (car current)))
+                            (trace:scan-flag-set! trace #f)
+                            (trace:scan-id-set! trace 0)
+                            (rewind (cdr current)))))))
+            (rewind trace-list)
+            (set! trace-count (context:trace-count context))
+            (set! trace-list  (context:trace-list context))            
+            )))
+       (calc-abs-reg
+        (lambda (trace)
+          (letrec
+            ((calc
+              (lambda (current)
+                (and (pair? current)
+                     (let ((origin (car current)))
+                       (cond
+                        ((instruction-constant:? origin)
+                         (instruction-constant:dst-reg-id-set!
+                          origin
+                          (+ (path:offset-abs (trace:path trace))
+                             (instruction-constant:dst-reg-id origin))
+                          ))
+                        ((instruction-branch:? origin)
+                         (instruction-branch:cond-reg-id-set!
+                          origin
+                          (+ (path:offset-abs (trace:path trace))
+                             (instruction-branch:cond-reg-id origin))
+                          ))
+                        ((instruction-return:? origin)
+                         (instruction-return:src-set!
+                          origin
+                          (+ (path:offset-abs (trace:path trace))
+                             (instruction-return:src origin))
+                          ))
+                        ((instruction-apply-prepare:? origin)
+                         (instruction-apply-prepare:src-reg-id-set!
+                          origin
+                          (+ (path:offset-abs (trace:path trace))
+                             (instruction-apply-prepare:src-reg-id origin))
+                          ))
+                        ((instruction-apply-push-arg:? origin)
+                         (instruction-apply-push-arg:src-reg-id-set!
+                          origin
+                          (+ (path:offset-abs (trace:path trace))
+                             (instruction-apply-push-arg:src-reg-id origin))
+                          ))
+                        ((instruction-apply:? origin)
+                         (instruction-apply:dst-reg-id-set!
+                          origin
+                          (+ (path:offset-abs (trace:path trace))
+                             (instruction-apply:dst-reg-id origin))
+                          ))
+                        ((instruction-load:? origin)
+                         (instruction-load:dst-reg-id-set!
+                          origin
+                          (+ (path:offset-abs (trace:path trace))
+                             (instruction-load:dst-reg-id origin))
+                          ))
+                        ((instruction-store:? origin)
+                         (instruction-store:src-reg-id-set!
+                          origin
+                          (+ (path:offset-abs (trace:path trace))
+                             (instruction-store:src-reg-id origin))
+                          ))
+                        ((instruction-lambda:? origin)
+                         (instruction-lambda:dst-reg-id-set!
+                          origin
+                          (+ (path:offset-abs (trace:path trace))
+                             (instruction-lambda:dst-reg-id origin))
+                          ))
+                        )
+                       (calc (cdr current))
+                       ))
+                )))
+            (calc (trace:instruction-rlist trace))
+            )))
+       (scan-trace-pass-1
+        (lambda (trace)
+          (or (trace:scan-flag trace)
+              (let ((last-instruction (car (trace:instruction-rlist trace)))
+                    (assign-scan-id
+                     (lambda ()
+                       (trace:scan-id-set! trace trace-count)
+                       (set! trace-count (+ trace-count 1))
+                       (set! trace-list (cons trace trace-list))))
+                    (inc-ref-count
+                     (lambda (trace)
+                       (trace:ref-count-set!
+                        trace
+                        (+ 1 (trace:ref-count trace)))))
+                    )
+                (trace:scan-flag-set! trace #t)
+                (assign-scan-id)
+                (scan-path (trace:path trace))
+                (calc-abs-reg trace)
+                (cond
+                 ((instruction-branch:? last-instruction)
+                  (let ((then-trace (instruction-branch:then-branch last-instruction))
+                        (else-trace (instruction-branch:else-branch last-instruction))
+                        )
+                    (scan-trace-pass-1 then-trace)
+                    (scan-trace-pass-1 else-trace)
+                    (inc-ref-count then-trace)
+                    ))
+                 ((instruction-jump:? last-instruction)
+                  (let ((target-trace (instruction-jump:target last-instruction))
+                        )
+                    (scan-trace-pass-1 target-trace)
+                    (inc-ref-count target-trace)
+                    ))
+                 ))
+              )))
+       (scan-trace-pass-2
+        (lambda (trace)
+          (or (trace:scan-flag trace)
+              (let ((last-instruction (car (trace:instruction-rlist trace)))
+                    (assign-scan-id
+                     (lambda ()
+                       (trace:scan-id-set! trace trace-count)
+                       (set! trace-count (+ trace-count 1))
+                       (set! trace-list (cons trace trace-list))))
+                    )
+                (trace:scan-flag-set! trace #t)
+                (assign-scan-id)
+                (cond
+                 ((instruction-branch:? last-instruction)
+                  (let ((then-trace (instruction-branch:then-branch last-instruction))
+                        (else-trace (instruction-branch:else-branch last-instruction))
+                        )
+                    (scan-trace-pass-2 then-trace)
+                    (scan-trace-pass-2 else-trace)
+                    ))
+                 ((instruction-jump:? last-instruction)
+                  (let ((target-trace (instruction-jump:target last-instruction))
+                        )
+                    (scan-trace-pass-2 target-trace)
+                    (and (= (trace:ref-count target-trace) 1)
+                         (trace:instruction-rlist-set!
+                          trace
+                          (append
+                           (trace:instruction-rlist target-trace)
+                           (cdr (trace:instruction-rlist trace)))))
+                    ))
+                 ))
+              )))
+       (scan-trace-pass-ref-to-id
         (lambda (trace)
           (or (trace:scan-flag trace)
               (let ((last-instruction (car (trace:instruction-rlist trace)))
@@ -497,14 +645,13 @@
                        (trace:scan-id-set! trace '())))
                     )
                 (trace:scan-flag-set! trace #t)
-                (scan-path (trace:path trace))
                 (cond
                  ((instruction-branch:? last-instruction)
                   (let ((then-trace (instruction-branch:then-branch last-instruction))
                         (else-trace (instruction-branch:else-branch last-instruction))
                         )
-                    (scan-trace then-trace)
-                    (scan-trace else-trace)
+                    (scan-trace-pass-ref-to-id then-trace)
+                    (scan-trace-pass-ref-to-id else-trace)
                     (assign-scan-id)
                     (instruction-branch:then-branch-set!
                      last-instruction
@@ -516,26 +663,36 @@
                  ((instruction-jump:? last-instruction)
                   (let ((target-trace (instruction-jump:target last-instruction))
                         )
-                    (scan-trace target-trace)
+                    (scan-trace-pass-ref-to-id target-trace)
                     (if (eq? (trace:scan-id target-trace) '())
                         (if (eq? (cdr (trace:instruction-rlist trace)) '())
                             (set-stub)
                             (let ((last-eff-instruction
                                    (car (cdr (trace:instruction-rlist trace)))))
                               (assign-scan-id)
-                              (and (instruction-apply:? last-eff-instruction)
-                                   (begin
-                                     (trace:instruction-rlist-set!
-                                      trace
-                                      (cdr (cdr (trace:instruction-rlist trace))))
-                                     (trace:instruction-append!
-                                      trace
-                                      (instruction-apply-tail:@))))))
-                        (assign-scan-id)
+                              (if (instruction-apply:? last-eff-instruction)
+                                  (begin
+                                    (trace:instruction-rlist-set!
+                                     trace
+                                     (cdr (cdr (trace:instruction-rlist trace))))
+                                    (trace:instruction-append!
+                                     trace
+                                     (instruction-apply-tail:@)))
+                                  (begin
+                                    (trace:instruction-rlist-set!
+                                     trace
+                                     (cdr (trace:instruction-rlist trace)))
+                                    (trace:instruction-append!
+                                     trace
+                                     (instruction-return:@ 0)))
+                                  )))
+                        (begin
+                          (assign-scan-id)
+                          (instruction-jump:target-set!
+                           last-instruction
+                           (trace:scan-id target-trace))
+                          )
                         )
-                    (instruction-jump:target-set!
-                     last-instruction
-                     (trace:scan-id target-trace))
                     ))
                  ((instruction-return:? last-instruction)
                   (if (eq? (cdr (trace:instruction-rlist trace)) '())
@@ -559,7 +716,11 @@
                  ))
               )))
        )
-    (scan-trace (path:start-trace path))
+    (scan-trace-pass-1 (path:start-trace path))
+    (rewind-trace-scan)
+    (scan-trace-pass-2 (path:start-trace path))
+    (rewind-trace-scan)
+    (scan-trace-pass-ref-to-id (path:start-trace path))
     (context:trace-list-set! context trace-list)
     (context:trace-count-set! context trace-count)
     (entry:@ (path:start-trace path)
@@ -637,17 +798,15 @@
                   (cond
                    ((instruction-constant:? origin)
                     (vector instruction-head:constant
-                            (instruction-constant:constant origin)
-                            (+ (path:offset-abs (trace:path trace))
-                               (instruction-constant:dst-reg-id origin))
+                            (trace:create-constant! trace (instruction-constant:constant origin))
+                            (instruction-constant:dst-reg-id origin)
                             )
                     )
                    ((instruction-branch:? origin)
                     (vector instruction-head:branch 
                             (instruction-branch:then-branch origin)
                             (instruction-branch:else-branch origin)
-                            (+ (path:offset-abs (trace:path trace))
-                               (instruction-branch:cond-reg-id origin))
+                            (instruction-branch:cond-reg-id origin)
                             )
                     )
                    ((instruction-jump:? origin)
@@ -656,26 +815,22 @@
                     )
                    ((instruction-return:? origin)
                     (vector instruction-head:return
-                            (+ (path:offset-abs (trace:path trace))
-                               (instruction-return:src origin))
+                            (instruction-return:src origin)
                             )
                     )
                    ((instruction-apply-prepare:? origin)
                     (vector instruction-head:apply-prepare
-                            (+ (path:offset-abs (trace:path trace))
-                               (instruction-apply-prepare:src-reg-id origin))
+                            (instruction-apply-prepare:src-reg-id origin)
                             )
                     )
                    ((instruction-apply-push-arg:? origin)
                     (vector instruction-head:apply-push-arg
-                            (+ (path:offset-abs (trace:path trace))
-                               (instruction-apply-push-arg:src-reg-id origin))
+                            (instruction-apply-push-arg:src-reg-id origin)
                             )
                     )
                    ((instruction-apply:? origin)
                     (vector instruction-head:apply
-                            (+ (path:offset-abs (trace:path trace))
-                               (instruction-apply:dst-reg-id origin))
+                            (instruction-apply:dst-reg-id origin)
                             )
                     )
                    ((instruction-apply-tail:? origin)
@@ -685,23 +840,20 @@
                     (vector instruction-head:load  
                             (instruction-load:level origin)
                             (instruction-load:offset origin)
-                            (+ (path:offset-abs (trace:path trace))
-                               (instruction-load:dst-reg-id origin))
+                            (instruction-load:dst-reg-id origin)
                             )
                     )
                    ((instruction-store:? origin)
                     (vector instruction-head:store
                             (instruction-store:level origin)
                             (instruction-store:offset origin)
-                            (+ (path:offset-abs (trace:path trace))
-                               (instruction-store:src-reg-id origin))
+                            (instruction-store:src-reg-id origin)
                             )
                     )
                    ((instruction-lambda:? origin)
                     (vector instruction-head:lambda
                             (instruction-lambda:entry-id origin)
-                            (+ (path:offset-abs (trace:path trace))
-                               (instruction-lambda:dst-reg-id origin))
+                            (instruction-lambda:dst-reg-id origin)
                             )
                     )
                    ))
@@ -733,6 +885,7 @@
          (compiler:compile-expression context expression)))
        )
      )))
+
 (define (shell:binary-compiler input-file output-file)
   (let ((input (open-input-file input-file))
         (output (open-output-file output-file #:exists 'truncate)))
@@ -766,6 +919,7 @@
       (write 0)
       )
     ))
+
 (define (shell:repl)
   (let ((prog '()))
     (display "repl> ")
@@ -808,7 +962,17 @@
   )
 
 (define (shell:unit-test)
-  (let ((prog (shell:compile-raw-sexp shell:unit-case-7)))
-    (pretty-print prog)
-    (vm:execute-prog prog)
+  (let ((test
+         (lambda (exp)
+           (let ((prog (shell:compile-raw-sexp exp)))
+             (pretty-print prog)
+             (vm:execute-prog prog)
+             ))))
+    (test shell:unit-case-1)
+    (test shell:unit-case-2)
+    (test shell:unit-case-3)
+    (test shell:unit-case-4)
+    (test shell:unit-case-5)
+    (test shell:unit-case-6)
+    (test shell:unit-case-7)
     ))

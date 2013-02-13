@@ -1,6 +1,6 @@
 (context return-continuation scope-level-list trace-list trace-count)
 (variable-binding level offset)
-(trace scan-flag scan-id lambda-info path context instruction-rlist constant-rlist constant-count)
+(trace ref-count scan-flag scan-id lambda-info path context instruction-rlist constant-rlist constant-count)
 (path start-trace end-trace regs-size offset-abs offset-rel parent)
 (entry entry-trace regs-size)
 (lambda-info argc regs-size)
