@@ -966,7 +966,7 @@
          (lambda (exp)
            (let ((prog (shell:compile-raw-sexp exp)))
              (pretty-print prog)
-             (vm:execute-prog prog)
+             (time (vm:execute-prog prog))
              ))))
     (test shell:unit-case-1)
     (test shell:unit-case-2)
