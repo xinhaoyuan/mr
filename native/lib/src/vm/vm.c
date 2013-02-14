@@ -176,7 +176,7 @@ mr_vm_run(mr_vm_t vm, mr_object_t external_slot)
                 target = ins->branch.else_trace;
             if (target->reg_max >= regs_size)
             {
-                result = MR_SYMBOL_VM_EXCEPTION_REGS_OUT_OF_RANGE;
+                result = MR_OBJECT_VM_EXCEPTION_REGS_OUT_OF_RANGE;
                 goto vmexit;
             }
             vm->trace = target;
@@ -189,7 +189,7 @@ mr_vm_run(mr_vm_t vm, mr_object_t external_slot)
         case INS_CODE_JUMP:
             if (ins->jump.target_trace->reg_max >= regs_size)
             {
-                result = MR_SYMBOL_VM_EXCEPTION_REGS_OUT_OF_RANGE;
+                result = MR_OBJECT_VM_EXCEPTION_REGS_OUT_OF_RANGE;
                 goto vmexit;
             }
             vm->trace = ins->jump.target_trace;
@@ -219,20 +219,20 @@ mr_vm_run(mr_vm_t vm, mr_object_t external_slot)
                 if (c->argc != ins->apply_prepare.length - 1)
                 {
                     /* exception - argc not match */
-                    result = MR_SYMBOL_VM_EXCEPTION_APPLY_ARGC_ERROR;
+                    result = MR_OBJECT_VM_EXCEPTION_APPLY_ARGC_ERROR;
                     goto vmexit;
                 }
                 if (c->entry_trace->lambda_info == NULL)
                 {
                     /* exception - invalid lambda info */
-                    result = MR_SYMBOL_VM_EXCEPTION_APPLY_BAD_ENTRY;
+                    result = MR_OBJECT_VM_EXCEPTION_APPLY_BAD_ENTRY;
                     goto vmexit;
                 }
                 mr_vector_t n_regs = mr_vector_allocate(vm->heap, c->entry_trace->lambda_info->regs_size);
                 if (n_regs == NULL)
                 {
                     /* exception - cannot allocate regs */
-                    result = MR_SYMBOL_VM_EXCEPTION_APPLY_NO_MEM;
+                    result = MR_OBJECT_VM_EXCEPTION_APPLY_NO_MEM;
                     goto vmexit;
                 }
                 mr_vector_t n_binding = mr_vector_allocate(vm->heap, c->argc + 1);
@@ -240,7 +240,7 @@ mr_vm_run(mr_vm_t vm, mr_object_t external_slot)
                 {
                     mr_object_remove_extern_ref(n_regs);
                     /* exception - cannot allcoate binding vec */
-                    result = MR_SYMBOL_VM_EXCEPTION_APPLY_NO_MEM;
+                    result = MR_OBJECT_VM_EXCEPTION_APPLY_NO_MEM;
                     goto vmexit;
                 }
                 mr_instruction_t ins_end = (ins + ins->apply_prepare.length);
@@ -254,7 +254,7 @@ mr_vm_run(mr_vm_t vm, mr_object_t external_slot)
                         mr_object_remove_extern_ref(n_regs);
                         mr_object_remove_extern_ref(n_binding);
                         /* exception - cannot create returning frame */
-                        result = MR_SYMBOL_VM_EXCEPTION_APPLY_NO_MEM;
+                        result = MR_OBJECT_VM_EXCEPTION_APPLY_NO_MEM;
                         goto vmexit;
                     }
                     vm->frame = frame;
@@ -274,7 +274,7 @@ mr_vm_run(mr_vm_t vm, mr_object_t external_slot)
             }
             else
             {
-                result = MR_SYMBOL_VM_EXCEPTION_APPLY_UNSOLVED;
+                result = MR_OBJECT_VM_EXCEPTION_APPLY_UNSOLVED;
                 goto vmexit;
             }
             break;
@@ -345,7 +345,7 @@ mr_vm_run(mr_vm_t vm, mr_object_t external_slot)
         }
 
         default:
-            result = MR_SYMBOL_VM_EXCEPTION_BAD_INSTRUCTION;
+            result = MR_OBJECT_VM_EXCEPTION_BAD_INSTRUCTION;
             goto vmexit;
         }
     }

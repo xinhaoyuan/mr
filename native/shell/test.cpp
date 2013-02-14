@@ -101,7 +101,7 @@ main(int argc, char **argv)
     while (1)
     {
         r = mr_vm_run(vm, r);
-        if (r == MR_SYMBOL_VM_EXCEPTION_APPLY_UNSOLVED)
+        if (r == MR_OBJECT_VM_EXCEPTION_APPLY_UNSOLVED)
         {
             mr_instruction_t ins = &vm->trace->entry[vm->pc];
             mr_object_t *regs    =  vm->regs->entry;
